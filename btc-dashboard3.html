@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BTC Terminal — Zones d'achat/vente</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans+Condensed:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0a0d12; --panel:#11161d; --panel-border:#1f2733;
+    --text:#e6e2d8; --muted:#7c8694;
+    --orange:#f7931a; --amber:#ffb000; --cyan:#4fd1c5; --red:#ff5d5d; --green:#3ddc97;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{ background:var(--bg); color:var(--text); font-family:'IBM Plex Mono', monospace; min-height:100vh; padding:14px; }
+  .eyebrow{ font-family:'IBM Plex Sans Condensed', sans-serif; text-transform:uppercase; letter-spacing:1.5px; font-size:11px; color:var(--muted); font-weight:600; }
+  header{ display:flex; flex-wrap:wrap; align-items:baseline; justify-content:space-between; border-bottom:1px solid var(--panel-border); padding-bottom:14px; margin-bottom:16px; gap:10px; }
+  .brand{display:flex; align-items:baseline; gap:10px;}
+  .brand h1{ font-family:'IBM Plex Sans Condensed', sans-serif; font-size:20px; font-weight:700; letter-spacing:0.5px; color:var(--orange); }
+  .price-block{display:flex; align-items:baseline; gap:12px; flex-wrap:wrap;}
+  .price{font-size:30px; font-weight:600; color:var(--text);}
+  .change{font-size:15px; font-weight:600; padding:2px 8px; border-radius:3px;}
+  .change.up{color:var(--green); background:rgba(61,220,151,0.1);}
+  .change.down{color:var(--red); background:rgba(255,93,93,0.1);}
+  .meta-row{display:flex; gap:18px; flex-wrap:wrap; align-items:center; margin-bottom:16px;}
+  .meta{font-size:11px; color:var(--muted);}
+  #refreshBtn{ background:var(--panel); border:1px solid var(--panel-border); color:var(--amber); font-family:'IBM Plex Mono', monospace; font-size:11px; font-weight:600; padding:6px 12px; border-radius:3px; cursor:pointer; letter-spacing:0.5px; text-transform:uppercase; }
+  #refreshBtn:hover{border-color:var(--amber);}
+  #refreshBtn:focus-visible, button:focus-visible{outline:2px solid var(--amber); outline-offset:2px;}
+  .gauge-panel{ background:var(--panel); border:1px solid var(--panel-border); border-radius:4px; padding:18px 20px; margin-bottom:16px; }
+  .gauge-top{display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; flex-wrap:wrap; gap:8px;}
+  .zone-label{ font-family:'IBM Plex Sans Condensed', sans-serif; font-size:22px; font-weight:700; letter-spacing:0.5px; }
+  .zone-score{font-size:13px; color:var(--muted);}
+  .gauge-track{ position:relative; height:10px; border-radius:5px; margin:18px 0 8px 0; background:linear-gradient(90deg, #ff5d5d 0%, #f7931a 25%, #3a4250 50%, #5fcf8f 75%, #3ddc97 100%); }
+  .gauge-marker{ position:absolute; top:-7px; width:2px; height:24px; background:var(--text); transition:left 0.6s ease; }
+  .gauge-marker::after{ content:''; position:absolute; top:-6px; left:-5px; width:0; height:0; border-left:6px solid transparent; border-right:6px solid transparent; border-bottom:7px solid var(--text); }
+  .gauge-scale{display:flex; justify-content:space-between; font-size:9px; color:var(--muted); letter-spacing:0.5px; text-transform:uppercase;}
+  .chart-panel{ background:var(--panel); border:1px solid var(--panel-border); border-radius:4px; padding:16px; margin-bottom:16px; }
+  .chart-wrap{ position:relative; height:280px; }
+  .chart-legend{ display:flex; flex-wrap:wrap; gap:10px 14px; margin-bottom:10px; font-size:10px; }
+  .chart-legend span{ display:inline-flex; align-items:center; gap:5px; color:var(--muted); }
+  .chart-legend i{ display:inline-block; width:12px; height:2px; border-radius:1px; }
+  .grid{ display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:14px; }
+  .panel{ background:var(--panel); border:1px solid var(--panel-border); border-radius:4px; padding:16px; }
+  .panel-title{ display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; }
+  .panel-label{ font-family:'IBM Plex Sans Condensed', sans-serif; font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:1px; color:var(--cyan); }
+  .panel-tag{font-size:9px; color:var(--muted); border:1px solid var(--panel-border); padding:1px 6px; border-radius:8px;}
+  .row{display:flex; justify-content:space-between; align-items:baseline; padding:5px 0; border-bottom:1px solid rgba(31,39,51,0.5); font-size:13px; gap:8px;}
+  .row:last-child{border-bottom:none;}
+  .row .lbl{color:var(--muted); font-size:12px;}
+  .row .val{font-weight:600; text-align:right;}
+  .val.pos{color:var(--green);} .val.neg{color:var(--red);} .val.neutral{color:var(--amber);}
+  .unavailable{color:var(--muted); font-size:12px; line-height:1.6;}
+  .unavailable b{color:var(--text);}
+  .loading{color:var(--muted); font-size:12px; font-style:italic;}
+  .explain{ margin-top:10px; padding-top:10px; border-top:1px dashed var(--panel-border); font-family:'IBM Plex Sans Condensed', sans-serif; font-size:11.5px; color:var(--muted); line-height:1.55; }
+  .explain b{color:var(--text);}
+  footer{margin-top:18px; font-size:10px; color:var(--muted); line-height:1.6; border-top:1px solid var(--panel-border); padding-top:12px;}
+  @media (prefers-reduced-motion: reduce){ * { transition:none !important; } }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand"><h1>&#8383; BTC TERMINAL</h1><span class="eyebrow">Zones d'achat / vente</span></div>
+  <div class="price-block"><span class="price" id="priceVal">--</span><span class="change" id="changeVal">--</span></div>
+</header>
+
+<div class="meta-row">
+  <span class="meta" id="lastUpdate">Chargement...</span>
+  <button id="refreshBtn" onclick="loadAll()">&#8635; Actualiser</button>
+</div>
+
+<div class="gauge-panel">
+  <div class="gauge-top">
+    <div><div class="eyebrow">Score composite</div><div class="zone-label" id="zoneLabel">Calcul en cours...</div></div>
+    <div class="zone-score" id="zoneScore">--</div>
+  </div>
+  <div class="gauge-track"><div class="gauge-marker" id="gaugeMarker" style="left:50%;"></div></div>
+  <div class="gauge-scale"><span>Distribution forte</span><span>Distribution</span><span>Neutre</span><span>Accumulation</span><span>Accumulation forte</span></div>
+  <div class="explain">Moyenne pondérée de 8 indicateurs techniques (tendance, RSI daily/weekly, Fibonacci, Bollinger, Pi Cycle, Z-score, liquidité). Un score élevé ne garantit rien : c'est une lecture de structure de marché, pas un signal d'achat automatique.</div>
+</div>
+
+<div class="chart-panel">
+  <div class="panel-title"><span class="panel-label">Graphique prix — hebdomadaire</span><span class="panel-tag">SMA10w / SMA20w / Bollinger / Fibonacci</span></div>
+  <div class="chart-legend" id="chartLegend"></div>
+  <div class="chart-wrap"><canvas id="priceChart"></canvas></div>
+</div>
+
+<div class="grid">
+  <div class="panel">
+    <div class="panel-title"><span class="panel-label">Tendance</span><span class="panel-tag">SMA 50 / 200</span></div>
+    <div id="trendPanel" class="loading">Chargement...</div>
+    <div class="explain"><b>Mesure :</b> la position du prix par rapport à ses moyennes mobiles 50j et 200j. <b>Lecture :</b> prix au-dessus des deux, avec SMA50 au-dessus de SMA200 (golden cross), signale une tendance de fond haussière — zone d'achat sur repli. L'inverse (death cross) signale une tendance baissière.</div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title"><span class="panel-label">Momentum daily</span><span class="panel-tag">RSI 14</span></div>
+    <div id="momentumPanel" class="loading">Chargement...</div>
+    <div class="explain"><b>Mesure :</b> la vitesse et l'ampleur des mouvements de prix récents (quotidien). <b>Lecture :</b> sous 30 = survente, le marché a peut-être trop vendu (zone d'achat potentielle). Au-dessus de 70 = surachat (zone de vente potentielle). Entre les deux : pas de signal fort.</div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title"><span class="panel-label">Momentum weekly</span><span class="panel-tag">RSI 14</span></div>
+    <div id="momentumWeeklyPanel" class="loading">Chargement...</div>
+    <div class="explain"><b>Mesure :</b> le même calcul que le RSI daily mais sur des clôtures hebdomadaires, donc beaucoup moins de faux signaux. <b>Lecture :</b> un RSI weekly sous 30 est rare et a historiquement coïncidé avec des bas de cycle. Au-dessus de 70, le marché est en euphorie sur le temps long.</div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title"><span class="panel-label">Niveaux Fibonacci</span><span class="panel-tag">90j</span></div>
+    <div id="fibPanel" class="loading">Chargement...</div>
+    <div class="explain"><b>Mesure :</b> les niveaux de retracement entre le plus haut et le plus bas des 90 derniers jours. <b>Lecture :</b> les niveaux 38,2% / 50% / 61,8% agissent souvent comme support (zone d'achat) en tendance haussière ou résistance (zone de vente) en tendance baissière. Le niveau le plus proche du prix actuel est marqué d'une flèche.</div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title"><span class="panel-label">Bandes de Bollinger</span><span class="panel-tag">20j, 2&sigma;</span></div>
+    <div id="bollingerPanel" class="loading">Chargement...</div>
+    <div class="explain"><b>Mesure :</b> l'écart du prix par rapport à sa moyenne 20j en unités d'écart-type. <b>Lecture :</b> %B proche de 0 = prix collé à la bande basse (survente relative). %B proche de 1 = prix collé à la bande haute (surachat relatif). Une forte compression des bandes annonce souvent un mouvement violent à venir, sans indiquer la direction.</div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title"><span class="panel-label">Pi Cycle Top</span><span class="panel-tag">SMA111 / 2&times;SMA350</span></div>
+    <div id="piCyclePanel" class="loading">Chargement...</div>
+    <div class="explain"><b>Mesure :</b> le croisement de la SMA 111 jours au-dessus de 2&times;SMA 350 jours. <b>Lecture :</b> historiquement, ce croisement a marqué les sommets de cycle BTC à quelques jours près (2013, 2017, 2021). C'est un indicateur de sommet uniquement — il ne signale jamais les creux. Aucun signal actif = pas d'information sur un éventuel sommet imminent.</div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title"><span class="panel-label">200 Week MA</span><span class="panel-tag">Indisponible</span></div>
+    <div class="unavailable">Nécessite environ 4 ans d'historique quotidien. L'API gratuite CoinGecko limite l'accès à 365 jours glissants — ce calcul demande un plan payant ou une autre source de données.<br><br>Repère pratique : sur les cycles passés, la 200 Week MA a coïncidé avec les planchers de marché baissier. Tu peux la consulter gratuitement sur <b>woocharts.com</b> ou <b>lookintobitcoin.com</b>.</div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title"><span class="panel-label">Z-Score (prix)</span><span class="panel-tag">vs SMA50</span></div>
+    <div id="zscorePanel" class="loading">Chargement...</div>
+    <div class="explain"><b>Attention :</b> ceci est un Z-score statistique du prix par rapport à sa moyenne 50j — <b>pas</b> le MVRV Z-Score on-chain (qui compare valeur de marché et valeur réalisée, et nécessite des données blockchain payantes type Glassnode). <b>Lecture :</b> au-delà de &plusmn;2, le prix s'écarte fortement de sa moyenne récente, ce qui statistiquement appelle souvent un retour vers la moyenne.</div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title"><span class="panel-label">Liquidité marché</span><span class="panel-tag">Order book</span></div>
+    <div id="liquidityPanel" class="loading">Chargement...</div>
+    <div class="explain"><b>Mesure :</b> la profondeur du carnet d'ordres et l'écart bid/ask sur l'exchange. <b>Lecture :</b> un déséquilibre marqué vers les bids indique une pression acheteuse à court terme ; vers les asks, une pression vendeuse. Un spread large signale un risque d'exécution plus élevé (slippage).</div>
+  </div>
+
+  <div class="panel" style="grid-column: 1 / -1;">
+    <div class="panel-title"><span class="panel-label">On-chain &amp; Macro</span><span class="panel-tag">Non disponible en API gratuite</span></div>
+    <div class="unavailable">
+      <b>MVRV Z-Score (le vrai, on-chain), NUPL, Puell Multiple, SSR, réserves exchanges, M2/M3 global</b> nécessitent des fournisseurs spécialisés (Glassnode, CryptoQuant, CoinMetrics) avec clé API payante, inaccessibles depuis le navigateur.<br><br>
+      Pour les suivre : <b>glassnode.com</b>, <b>cryptoquant.com</b>, <b>woocharts.com</b>. Je n'affiche jamais de valeurs inventées ici.
+    </div>
+  </div>
+</div>
+
+<footer>
+  Donnees : CoinGecko (prix, historique 365j) &amp; Binance/Coinbase (order book BTC). Chargees en direct a chaque ouverture/actualisation.<br>
+  Auto-refresh toutes les 5 min si la page reste ouverte. Outil d'aide a la lecture technique, ne constitue pas un conseil en investissement.
+</footer>
+
+<script>
+function clamp(v, min, max){ return Math.max(min, Math.min(max, v)); }
+function fmtUSD(v){ return '$' + v.toLocaleString('en-US', {maximumFractionDigits:0}); }
+
+function calcSMA(closes, period){
+  const slice = closes.slice(-period);
+  return slice.reduce(function(a,b){return a+b;},0) / slice.length;
+}
+function calcSMASeries(closes, period){
+  const out = [];
+  for(let i=0;i<closes.length;i++){
+    if(i<period-1){ out.push(null); continue; }
+    let sum=0; for(let j=i-period+1;j<=i;j++){ sum+=closes[j]; }
+    out.push(sum/period);
+  }
+  return out;
+}
+function stdevLast(closes, period){
+  const slice = closes.slice(-period);
+  const mean = slice.reduce(function(a,b){return a+b;},0)/slice.length;
+  const variance = slice.reduce(function(a,b){return a+Math.pow(b-mean,2);},0)/slice.length;
+  return Math.sqrt(variance);
+}
+function bollinger(closes, period, mult){
+  const upper=[], lower=[];
+  for(let i=0;i<closes.length;i++){
+    if(i<period-1){ upper.push(null); lower.push(null); continue; }
+    const slice = closes.slice(i-period+1, i+1);
+    const mean = slice.reduce(function(a,b){return a+b;},0)/period;
+    const variance = slice.reduce(function(a,b){return a+Math.pow(b-mean,2);},0)/period;
+    const sd = Math.sqrt(variance);
+    upper.push(mean+mult*sd); lower.push(mean-mult*sd);
+  }
+  return {upper:upper, lower:lower};
+}
+function calcRSI(closes, period){
+  if(period===undefined) period=14;
+  if(closes.length < period+1) return null;
+  let gains=0, losses=0;
+  for(let i=1;i<=period;i++){
+    const diff = closes[i]-closes[i-1];
+    if(diff>=0) gains+=diff; else losses-=diff;
+  }
+  let avgGain=gains/period, avgLoss=losses/period;
+  for(let i=period+1;i<closes.length;i++){
+    const diff=closes[i]-closes[i-1];
+    const gain = diff>0?diff:0;
+    const loss = diff<0?-diff:0;
+    avgGain = (avgGain*(period-1)+gain)/period;
+    avgLoss = (avgLoss*(period-1)+loss)/period;
+  }
+  if(avgLoss===0) return 100;
+  const rs = avgGain/avgLoss;
+  return 100 - (100/(1+rs));
+}
+function toWeekly(closes){
+  const weekly = [];
+  for(let i=closes.length-1; i>=0; i-=7){ weekly.unshift(closes[i]); }
+  return weekly;
+}
+
+async function fetchJson(url, opts){
+  if(opts===undefined) opts={};
+  const controller = new AbortController();
+  const timeout = setTimeout(function(){ controller.abort(); }, 12000);
+  try{
+    const fetchOpts = Object.assign({}, opts, {signal: controller.signal});
+    const res = await fetch(url, fetchOpts);
+    clearTimeout(timeout);
+    if(res.status === 429){
+      await new Promise(function(r){ setTimeout(r, 2000); });
+      const retry = await fetch(url, opts);
+      if(!retry.ok) throw new Error('HTTP ' + retry.status + ' (rate limit persistant)');
+      return retry.json();
+    }
+    if(!res.ok) throw new Error('HTTP ' + res.status + ' ' + res.statusText);
+    return res.json();
+  }catch(e){
+    clearTimeout(timeout);
+    if(e.name === 'AbortError') throw new Error("Timeout (12s) - la requete a expire");
+    throw e;
+  }
+}
+
+let lastTrendScore=0, lastMomentumScore=0, lastMomentumWeeklyScore=0, lastFibScore=0, lastBollScore=0, lastPiCycleScore=0, lastZScore=0, lastLiqScore=0;
+
+async function loadAll(){
+  document.getElementById('lastUpdate').textContent = 'Actualisation...';
+  await loadPriceAndTechnicals();
+  await loadLiquidity();
+  document.getElementById('lastUpdate').textContent = 'Derniere mise a jour : ' + new Date().toLocaleTimeString('fr-FR');
+}
+
+async function loadPriceAndTechnicals(){
+  try{
+    const simple = await fetchJson('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd&include_24hr_change=true');
+    const price = simple.bitcoin.usd;
+    const change24h = simple.bitcoin.usd_24h_change;
+
+    document.getElementById('priceVal').textContent = fmtUSD(price);
+    const chEl = document.getElementById('changeVal');
+    chEl.textContent = (change24h>=0?'+':'') + change24h.toFixed(2) + '% 24h';
+    chEl.className = 'change ' + (change24h>=0?'up':'down');
+
+    const hist = await fetchJson('https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days=365');
+    const closes = hist.prices.map(function(p){return p[1];});
+    const dates = hist.prices.map(function(p){return p[0];});
+
+    const sma50 = calcSMA(closes,50);
+    const sma200 = calcSMA(closes,200);
+    const rsi = calcRSI(closes,14);
+
+    const trendUp = price > sma50 && sma50 > sma200;
+    document.getElementById('trendPanel').innerHTML =
+      '<div class="row"><span class="lbl">Prix actuel</span><span class="val">' + fmtUSD(price) + '</span></div>' +
+      '<div class="row"><span class="lbl">SMA 50</span><span class="val">' + fmtUSD(sma50) + '</span></div>' +
+      '<div class="row"><span class="lbl">SMA 200</span><span class="val">' + fmtUSD(sma200) + '</span></div>' +
+      '<div class="row"><span class="lbl">Structure</span><span class="val ' + (trendUp?'pos':'neg') + '">' + (trendUp?'Haussiere (prix > SMA50 > SMA200)':'Affaiblie / mixte') + '</span></div>';
+    lastTrendScore = clamp(((price-sma200)/sma200)*250 + (sma50>sma200?15:-15), -100, 100);
+
+    let rsiZone = 'Neutre', rsiClass='neutral';
+    if(rsi<30){ rsiZone = "Survente - zone d'achat potentielle"; rsiClass='pos'; }
+    else if(rsi>70){ rsiZone = "Surachat - zone de vente potentielle"; rsiClass='neg'; }
+    document.getElementById('momentumPanel').innerHTML =
+      '<div class="row"><span class="lbl">RSI (14, daily)</span><span class="val">' + rsi.toFixed(1) + '</span></div>' +
+      '<div class="row"><span class="lbl">Interpretation</span><span class="val ' + rsiClass + '">' + rsiZone + '</span></div>' +
+      '<div class="row"><span class="lbl">Seuils</span><span class="val" style="color:var(--muted); font-weight:400;">&lt;30 survente / &gt;70 surachat</span></div>';
+    lastMomentumScore = clamp((50-rsi)*2.5, -100, 100);
+
+    const weeklyCloses = toWeekly(closes);
+    const rsiWeekly = calcRSI(weeklyCloses,14);
+    let rsiWZone = 'Neutre', rsiWClass='neutral';
+    if(rsiWeekly<30){ rsiWZone = "Survente structurelle - zone d'achat forte"; rsiWClass='pos'; }
+    else if(rsiWeekly>70){ rsiWZone = 'Surachat structurel - prudence'; rsiWClass='neg'; }
+    document.getElementById('momentumWeeklyPanel').innerHTML =
+      '<div class="row"><span class="lbl">RSI (14, weekly)</span><span class="val">' + rsiWeekly.toFixed(1) + '</span></div>' +
+      '<div class="row"><span class="lbl">Interpretation</span><span class="val ' + rsiWClass + '">' + rsiWZone + '</span></div>' +
+      '<div class="row"><span class="lbl">Points utilises</span><span class="val" style="color:var(--muted); font-weight:400;">' + weeklyCloses.length + ' semaines</span></div>';
+    lastMomentumWeeklyScore = clamp((50-rsiWeekly)*2.5, -100, 100);
+
+    const window90 = closes.slice(-90);
+    const high = Math.max.apply(null, window90);
+    const low = Math.min.apply(null, window90);
+    const fibRatios = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1];
+    const levels = fibRatios.map(function(r){ return {r:r, price: high - (high-low)*r}; });
+    let fibHtml = '';
+    levels.forEach(function(l){
+      const isNear = Math.abs(price-l.price)/price < 0.015;
+      fibHtml += '<div class="row"><span class="lbl">' + (l.r*100).toFixed(1) + '%</span><span class="val' + (isNear?' neutral':'') + '">' + fmtUSD(l.price) + (isNear?' &larr;':'') + '</span></div>';
+    });
+    document.getElementById('fibPanel').innerHTML = fibHtml;
+    lastFibScore = clamp(100 - ((price-low)/(high-low))*200, -100, 100);
+
+    const boll = bollinger(closes, 20, 2);
+    const bUpper = boll.upper[boll.upper.length-1];
+    const bLower = boll.lower[boll.lower.length-1];
+    const percentB = (price-bLower)/(bUpper-bLower);
+    let bollZone='Neutre', bollClass='neutral';
+    if(percentB<0.1){ bollZone='Pres de la bande basse - survente relative'; bollClass='pos'; }
+    else if(percentB>0.9){ bollZone='Pres de la bande haute - surachat relatif'; bollClass='neg'; }
+    document.getElementById('bollingerPanel').innerHTML =
+      '<div class="row"><span class="lbl">Bande superieure</span><span class="val">' + fmtUSD(bUpper) + '</span></div>' +
+      '<div class="row"><span class="lbl">Bande inferieure</span><span class="val">' + fmtUSD(bLower) + '</span></div>' +
+      '<div class="row"><span class="lbl">%B</span><span class="val ' + bollClass + '">' + percentB.toFixed(2) + '</span></div>' +
+      '<div class="row"><span class="lbl">Lecture</span><span class="val ' + bollClass + '" style="font-size:11px;">' + bollZone + '</span></div>';
+    lastBollScore = clamp((0.5-percentB)*200, -100, 100);
+
+    let piPanelHtml = '';
+    if(closes.length >= 350){
+      const sma111 = calcSMA(closes,111);
+      const sma350 = calcSMA(closes,350);
+      const ratio = sma111/(2*sma350);
+      const triggered = ratio>=1;
+      piPanelHtml =
+        '<div class="row"><span class="lbl">SMA 111j</span><span class="val">' + fmtUSD(sma111) + '</span></div>' +
+        '<div class="row"><span class="lbl">2 x SMA 350j</span><span class="val">' + fmtUSD(2*sma350) + '</span></div>' +
+        '<div class="row"><span class="lbl">Ratio (1.0 = signal)</span><span class="val' + (triggered?' neg':'') + '">' + ratio.toFixed(3) + '</span></div>' +
+        '<div class="row"><span class="lbl">Statut</span><span class="val ' + (triggered?'neg':'pos') + '">' + (triggered?'SIGNAL DE SOMMET ACTIF':'Pas de signal') + '</span></div>';
+      if(triggered){ lastPiCycleScore = -100; }
+      else if(ratio>0.9){ lastPiCycleScore = -60; }
+      else if(ratio>0.8){ lastPiCycleScore = -30; }
+      else { lastPiCycleScore = 0; }
+    } else {
+      piPanelHtml = '<div class="unavailable">Historique insuffisant recupere (' + closes.length + ' jours, 350 requis). Reessaie plus tard ou augmente la fenetre de l\'API.</div>';
+      lastPiCycleScore = 0;
+    }
+    document.getElementById('piCyclePanel').innerHTML = piPanelHtml;
+
+    const sd50 = stdevLast(closes,50);
+    const zScore = (price-sma50)/sd50;
+    let zZone='Neutre', zClass='neutral';
+    if(zScore<-2){ zZone='Tres en dessous de la moyenne - zone statistique d\'achat'; zClass='pos'; }
+    else if(zScore>2){ zZone='Tres au-dessus de la moyenne - zone statistique de vente'; zClass='neg'; }
+    document.getElementById('zscorePanel').innerHTML =
+      '<div class="row"><span class="lbl">Z-Score</span><span class="val ' + zClass + '">' + zScore.toFixed(2) + '</span></div>' +
+      '<div class="row"><span class="lbl">Lecture</span><span class="val ' + zClass + '" style="font-size:11px;">' + zZone + '</span></div>';
+    lastZScore = clamp(-zScore*30, -100, 100);
+
+    renderChart(dates, closes, levels.filter(function(l){return l.r===0.382||l.r===0.5||l.r===0.618;}));
+
+  }catch(e){
+    const msg = '<div class="loading">Erreur : ' + e.message + '</div>';
+    document.getElementById('trendPanel').innerHTML = msg;
+    document.getElementById('momentumPanel').innerHTML = msg;
+    document.getElementById('momentumWeeklyPanel').innerHTML = msg;
+    document.getElementById('fibPanel').innerHTML = msg;
+    document.getElementById('bollingerPanel').innerHTML = msg;
+    document.getElementById('piCyclePanel').innerHTML = msg;
+    document.getElementById('zscorePanel').innerHTML = msg;
+  }
+  updateGauge();
+}
+
+let lastChartSeries = null;
+
+function toWeeklySeries(dates, closes){
+  const wd = [], wc = [];
+  for(let i=closes.length-1; i>=0; i-=7){ wd.unshift(dates[i]); wc.unshift(closes[i]); }
+  return {dates:wd, closes:wc};
+}
+
+function renderChart(dates, closes, fibLevels){
+  const weekly = toWeeklySeries(dates, closes);
+  const wDates = weekly.dates, wCloses = weekly.closes;
+  const sma10 = calcSMASeries(wCloses, 10);
+  const sma20 = calcSMASeries(wCloses, 20);
+  const boll = bollinger(wCloses, 20, 2);
+  const labels = wDates.map(function(d){ return new Date(d).toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit'}); });
+
+  const series = [
+    {key:'fib', name:'Fibonacci', color:'rgba(61,220,151,0.4)', width:1, dash:[1,3], data:null},
+    {name:'Bollinger sup', color:'rgba(124,134,148,0.5)', width:1, dash:[3,2], data: boll.upper},
+    {name:'Bollinger inf', color:'rgba(124,134,148,0.5)', width:1, dash:[3,2], data: boll.lower},
+    {name:'SMA 20 sem.', color:'#ffb000', width:1.3, dash:[2,2], data: sma20},
+    {name:'SMA 10 sem.', color:'#4fd1c5', width:1.3, dash:[4,2], data: sma10},
+    {name:'Prix (cloture hebdo)', color:'#f7931a', width:2, dash:null, data: wCloses}
+  ];
+  fibLevels.forEach(function(l, idx){
+    series.splice(idx, 0, {name:'Fib '+(l.r*100).toFixed(1)+'%', color:'rgba(61,220,151,0.35)', width:1, dash:[1,3], data: new Array(labels.length).fill(l.price)});
+  });
+  const finalSeries = series.filter(function(s){ return s.key !== 'fib'; });
+
+  lastChartSeries = {labels: labels, series: finalSeries};
+  drawChart();
+  renderLegend(finalSeries);
+}
+
+function renderLegend(series){
+  const el = document.getElementById('chartLegend');
+  if(!el) return;
+  el.innerHTML = series.map(function(s){
+    return '<span><i style="background:' + s.color + '"></i>' + s.name + '</span>';
+  }).join('');
+}
+
+function drawChart(){
+  const canvas = document.getElementById('priceChart');
+  if(!canvas || !lastChartSeries) return;
+  const wrap = canvas.parentElement;
+  const W = Math.max(280, wrap.clientWidth);
+  const H = 280;
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = W*dpr; canvas.height = H*dpr;
+  canvas.style.width = W+'px'; canvas.style.height = H+'px';
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.clearRect(0,0,W,H);
+
+  const labels = lastChartSeries.labels;
+  const series = lastChartSeries.series;
+  const n = labels.length;
+  if(n<2) return;
+
+  const padL=58, padR=8, padT=10, padB=22;
+  const plotW = W-padL-padR, plotH = H-padT-padB;
+
+  const allVals = [];
+  series.forEach(function(s){ s.data.forEach(function(v){ if(v!==null && v!==undefined && isFinite(v)) allVals.push(v); }); });
+  if(allVals.length===0) return;
+  const minV = Math.min.apply(null, allVals), maxV = Math.max.apply(null, allVals);
+  const padV = (maxV-minV)*0.06 || maxV*0.05;
+  const yMin = minV-padV, yMax = maxV+padV;
+
+  function X(i){ return padL + (i/(n-1))*plotW; }
+  function Y(v){ return padT + (1-(v-yMin)/(yMax-yMin))*plotH; }
+
+  ctx.strokeStyle = '#1f2733'; ctx.fillStyle = '#7c8694';
+  ctx.font = '9px IBM Plex Mono, monospace'; ctx.lineWidth = 1;
+  for(let g=0; g<=4; g++){
+    const v = yMin + (yMax-yMin)*g/4;
+    const yy = Y(v);
+    ctx.setLineDash([]);
+    ctx.beginPath(); ctx.moveTo(padL,yy); ctx.lineTo(W-padR,yy); ctx.stroke();
+    ctx.fillText('$' + Math.round(v).toLocaleString('en-US'), 2, yy+3);
+  }
+
+  const step = Math.max(1, Math.floor(n/6));
+  for(let i=0;i<n;i+=step){
+    ctx.fillText(labels[i], X(i)-12, H-6);
+  }
+
+  series.forEach(function(s){
+    ctx.beginPath();
+    let started = false;
+    s.data.forEach(function(v,i){
+      if(v===null || v===undefined || !isFinite(v)){ started=false; return; }
+      const px=X(i), py=Y(v);
+      if(!started){ ctx.moveTo(px,py); started=true; } else { ctx.lineTo(px,py); }
+    });
+    ctx.strokeStyle = s.color; ctx.lineWidth = s.width || 1.5;
+    if(s.dash) ctx.setLineDash(s.dash); else ctx.setLineDash([]);
+    ctx.stroke();
+  });
+  ctx.setLineDash([]);
+}
+
+window.addEventListener('resize', function(){
+  clearTimeout(window._chartResizeT);
+  window._chartResizeT = setTimeout(drawChart, 150);
+});
+
+async function fetchOrderBook(){
+  try{
+    const book = await fetchJson('https://api.binance.com/api/v3/depth?symbol=BTCUSDT&limit=500');
+    return {
+      bids: book.bids.map(function(b){return [parseFloat(b[0]), parseFloat(b[1])];}),
+      asks: book.asks.map(function(a){return [parseFloat(a[0]), parseFloat(a[1])];}),
+      source: 'Binance'
+    };
+  }catch(e){
+    const book = await fetchJson('https://api.exchange.coinbase.com/products/BTC-USD/book?level=2');
+    return {
+      bids: book.bids.map(function(b){return [parseFloat(b[0]), parseFloat(b[1])];}),
+      asks: book.asks.map(function(a){return [parseFloat(a[0]), parseFloat(a[1])];}),
+      source: 'Coinbase'
+    };
+  }
+}
+
+async function loadLiquidity(){
+  try{
+    const ob = await fetchOrderBook();
+    const bids = ob.bids, asks = ob.asks, source = ob.source;
+    const bestBid = bids[0][0];
+    const bestAsk = asks[0][0];
+    const spreadPct = ((bestAsk-bestBid)/bestBid)*100;
+
+    const bidDepth = bids.filter(function(b){return b[0] >= bestBid*0.99;}).reduce(function(s,b){return s+b[0]*b[1];},0);
+    const askDepth = asks.filter(function(a){return a[0] <= bestAsk*1.01;}).reduce(function(s,a){return s+a[0]*a[1];},0);
+    const imbalance = bidDepth/(bidDepth+askDepth);
+
+    let liqLabel = 'Equilibre', liqClass='neutral';
+    if(imbalance>0.58){liqLabel='Pression acheteuse'; liqClass='pos';}
+    else if(imbalance<0.42){liqLabel='Pression vendeuse'; liqClass='neg';}
+
+    document.getElementById('liquidityPanel').innerHTML =
+      '<div class="row"><span class="lbl">Source</span><span class="val" style="color:var(--muted); font-weight:400;">' + source + '</span></div>' +
+      '<div class="row"><span class="lbl">Spread bid/ask</span><span class="val">' + spreadPct.toFixed(4) + '%</span></div>' +
+      '<div class="row"><span class="lbl">Profondeur bid (&plusmn;1%)</span><span class="val">' + fmtUSD(bidDepth) + '</span></div>' +
+      '<div class="row"><span class="lbl">Profondeur ask (&plusmn;1%)</span><span class="val">' + fmtUSD(askDepth) + '</span></div>' +
+      '<div class="row"><span class="lbl">Desequilibre</span><span class="val ' + liqClass + '">' + (imbalance*100).toFixed(1) + '% - ' + liqLabel + '</span></div>';
+    lastLiqScore = clamp((imbalance-0.5)*200, -100, 100);
+  }catch(e){
+    document.getElementById('liquidityPanel').innerHTML = '<div class="loading">Erreur : ' + e.message + '</div>';
+    lastLiqScore = 0;
+  }
+  updateGauge();
+}
+
+function updateGauge(){
+  const composite =
+    lastTrendScore*0.20 +
+    lastMomentumScore*0.15 +
+    lastMomentumWeeklyScore*0.15 +
+    lastFibScore*0.15 +
+    lastBollScore*0.10 +
+    lastPiCycleScore*0.10 +
+    lastZScore*0.05 +
+    lastLiqScore*0.10;
+
+  const pct = ((composite+100)/200)*100;
+  document.getElementById('gaugeMarker').style.left = clamp(pct,2,98) + '%';
+  document.getElementById('zoneScore').textContent = (composite>=0?'+':'') + composite.toFixed(0) + ' / 100';
+
+  const zoneEl = document.getElementById('zoneLabel');
+  if(composite>=60){ zoneEl.textContent='ACCUMULATION FORTE'; zoneEl.style.color='var(--green)'; }
+  else if(composite>=20){ zoneEl.textContent='ACCUMULATION'; zoneEl.style.color='#5fcf8f'; }
+  else if(composite>-20){ zoneEl.textContent='NEUTRE - ATTENTE'; zoneEl.style.color='var(--amber)'; }
+  else if(composite>-60){ zoneEl.textContent='DISTRIBUTION'; zoneEl.style.color='var(--orange)'; }
+  else { zoneEl.textContent='DISTRIBUTION FORTE'; zoneEl.style.color='var(--red)'; }
+}
+
+loadAll();
+setInterval(loadAll, 5*60*1000);
+</script>
+</body>
+</html>
