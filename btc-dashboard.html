@@ -52,6 +52,11 @@
   .chart-legend{ display:flex; flex-wrap:wrap; gap:10px 14px; margin-bottom:10px; font-size:10px; }
   .chart-legend span{ display:inline-flex; align-items:center; gap:5px; color:var(--muted); }
   .chart-legend i{ display:inline-block; width:12px; height:2px; border-radius:1px; }
+  .levels-grid{ display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:16px; }
+  .levels-col-title{ font-family:'IBM Plex Sans Condensed', sans-serif; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px; }
+  .levels-col-title.pos{ color:var(--green); }
+  .levels-col-title.neg{ color:var(--red); }
+  .levels-current{ font-size:11px; color:var(--muted); margin-bottom:12px; padding-bottom:10px; border-bottom:1px solid var(--panel-border); }
   .timeframe-row{ display:flex; gap:6px; margin-bottom:10px; flex-wrap:wrap; }
   .tf-btn{ background:var(--bg); border:1px solid var(--panel-border); color:var(--muted); font-family:'IBM Plex Mono', monospace; font-size:10px; font-weight:600; padding:5px 10px; border-radius:3px; cursor:pointer; letter-spacing:0.5px; }
   .tf-btn.active{ border-color:var(--orange); color:var(--orange); background:rgba(247,147,26,0.08); }
@@ -112,6 +117,17 @@
   <div class="explain">Moyenne pondérée de 8 indicateurs techniques (tendance, RSI daily/weekly, Fibonacci, Bollinger, Pi Cycle, Z-score, liquidité). Un score élevé ne garantit rien : c'est une lecture de structure de marché, pas un signal d'achat automatique.</div>
 </div>
 
+<div class="panel" style="margin-bottom:16px;">
+  <div class="panel-title"><span class="panel-label">Niveaux clés à surveiller</span><span class="panel-tag">Supports / Résistances</span></div>
+  <div id="keyLevelsPanel">
+    <div class="skeleton" style="width:90%"></div>
+    <div class="skeleton" style="width:70%"></div>
+    <div class="skeleton" style="width:80%"></div>
+    <div class="skeleton" style="width:60%"></div>
+  </div>
+  <div class="explain"><b>Lecture :</b> les supports sont des niveaux où le prix a historiquement rebondi ou pourrait rebondir (zones d'achat surveillées) ; les résistances sont des niveaux où il a buté ou pourrait buter (zones de vente surveillées). Un niveau n'est qu'une probabilité plus élevée, jamais une garantie — surveille comment le prix réagit en s'en approchant plutôt que de placer un ordre automatique dessus.</div>
+</div>
+
 <div class="chart-panel">
   <div class="panel-title"><span class="panel-label">Graphique prix — hebdomadaire</span><span class="panel-tag">SMA10w / SMA20w / Bollinger / Fibonacci</span></div>
   <div class="timeframe-row" id="chartTimeframe">
@@ -121,6 +137,7 @@
     <button class="tf-btn" data-days="365">1A</button>
     <button class="tf-btn active" data-days="9999">Tout</button>
   </div>
+  <div style="font-size:9.5px; color:var(--muted); margin:-4px 0 10px 0;">Historique limite a ~365 jours (API gratuite) — "Tout" = maximum disponible, pas l'historique complet du BTC depuis 2009.</div>
   <div class="chart-legend" id="chartLegend"></div>
   <div class="chart-wrap">
     <canvas id="priceChart"></canvas>
@@ -396,6 +413,8 @@ async function loadPriceAndTechnicals(){
       '<div class="row"><span class="lbl">Lecture</span><span class="val ' + bollClass + '" style="font-size:11px;">' + bollZone + '</span></div>';
     lastBollScore = clamp((0.5-percentB)*200, -100, 100);
 
+    renderKeyLevels(price, levels, bUpper, bLower, sma50, sma200, low, high);
+
     let piPanelHtml = '';
     if(closes.length >= 350){
       const sma111 = calcSMA(closes,111);
@@ -428,7 +447,15 @@ async function loadPriceAndTechnicals(){
     lastZScore = clamp(-zScore*30, -100, 100);
 
     lastDailyData = {dates: dates, closes: closes, fibLevels: levels.filter(function(l){return l.r===0.382||l.r===0.5||l.r===0.618;})};
-    renderChart(lastDailyData.dates, lastDailyData.closes, lastDailyData.fibLevels);
+    try{
+      renderChart(lastDailyData.dates, lastDailyData.closes, lastDailyData.fibLevels);
+    }catch(chartErr){
+      const chartMsg = '<div class="loading">Erreur graphique : ' + chartErr.message + '</div>';
+      const chartSkel = document.getElementById('chartSkeleton');
+      if(chartSkel){ chartSkel.innerHTML = chartMsg; chartSkel.style.display = 'flex'; }
+      const rsiSkel = document.getElementById('rsiChartSkeleton');
+      if(rsiSkel){ rsiSkel.innerHTML = chartMsg; rsiSkel.style.display = 'flex'; }
+    }
 
   }catch(e){
     const msg = '<div class="loading">Erreur : ' + e.message + '</div>';
@@ -439,12 +466,57 @@ async function loadPriceAndTechnicals(){
     document.getElementById('bollingerPanel').innerHTML = msg;
     document.getElementById('piCyclePanel').innerHTML = msg;
     document.getElementById('zscorePanel').innerHTML = msg;
+    document.getElementById('keyLevelsPanel').innerHTML = msg;
     const chartSkel = document.getElementById('chartSkeleton');
-    if(chartSkel) chartSkel.innerHTML = msg;
+    if(chartSkel){ chartSkel.innerHTML = msg; chartSkel.style.display = 'flex'; }
     const rsiSkel = document.getElementById('rsiChartSkeleton');
-    if(rsiSkel) rsiSkel.innerHTML = msg;
+    if(rsiSkel){ rsiSkel.innerHTML = msg; rsiSkel.style.display = 'flex'; }
   }
   updateGauge();
+}
+
+function renderKeyLevels(price, fibLevels, bUpper, bLower, sma50, sma200, low90, high90){
+  const candidates = [];
+  fibLevels.forEach(function(l){ candidates.push({label:'Fibonacci ' + (l.r*100).toFixed(1) + '%', price:l.price}); });
+  candidates.push({label:'Bollinger inf. (20j)', price: bLower});
+  candidates.push({label:'Bollinger sup. (20j)', price: bUpper});
+  candidates.push({label:'Plus bas 90j', price: low90});
+  candidates.push({label:'Plus haut 90j', price: high90});
+  candidates.push({label:'SMA 50', price: sma50});
+  candidates.push({label:'SMA 200', price: sma200});
+
+  candidates.forEach(function(c){
+    c.type = c.price < price ? 'support' : 'resistance';
+    c.distPct = ((c.price-price)/price) * 100;
+  });
+
+  const seen = {};
+  const dedup = candidates.filter(function(c){
+    const key = Math.round(c.price/50);
+    if(seen[key]) return false;
+    seen[key] = true;
+    return true;
+  });
+
+  const supports = dedup.filter(function(c){ return c.type==='support'; })
+    .sort(function(a,b){ return b.price-a.price; }).slice(0,5);
+  const resistances = dedup.filter(function(c){ return c.type==='resistance'; })
+    .sort(function(a,b){ return a.price-b.price; }).slice(0,5);
+
+  function rowsHtml(list){
+    if(list.length===0) return '<div class="row"><span class="lbl">Aucun niveau identifie</span></div>';
+    return list.map(function(c){
+      return '<div class="row"><span class="lbl">' + c.label + '</span><span class="val">' + fmtUSD(c.price) +
+        ' <span style="color:var(--muted); font-weight:400;">(' + (c.distPct>=0?'+':'') + c.distPct.toFixed(1) + '%)</span></span></div>';
+    }).join('');
+  }
+
+  document.getElementById('keyLevelsPanel').innerHTML =
+    '<div class="levels-current">Prix actuel : ' + fmtUSD(price) + '</div>' +
+    '<div class="levels-grid">' +
+      '<div><div class="levels-col-title pos">Supports (achat potentiel)</div>' + rowsHtml(supports) + '</div>' +
+      '<div><div class="levels-col-title neg">Resistances (vente potentielle)</div>' + rowsHtml(resistances) + '</div>' +
+    '</div>';
 }
 
 let lastChartSeries = null;
