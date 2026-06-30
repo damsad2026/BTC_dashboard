@@ -52,6 +52,25 @@
   .chart-legend{ display:flex; flex-wrap:wrap; gap:10px 14px; margin-bottom:10px; font-size:10px; }
   .chart-legend span{ display:inline-flex; align-items:center; gap:5px; color:var(--muted); }
   .chart-legend i{ display:inline-block; width:12px; height:2px; border-radius:1px; }
+  .timeframe-row{ display:flex; gap:6px; margin-bottom:10px; flex-wrap:wrap; }
+  .tf-btn{ background:var(--bg); border:1px solid var(--panel-border); color:var(--muted); font-family:'IBM Plex Mono', monospace; font-size:10px; font-weight:600; padding:5px 10px; border-radius:3px; cursor:pointer; letter-spacing:0.5px; }
+  .tf-btn.active{ border-color:var(--orange); color:var(--orange); background:rgba(247,147,26,0.08); }
+  .tf-btn:focus-visible{ outline:2px solid var(--amber); outline-offset:1px; }
+  .skeleton{ height:13px; border-radius:3px; margin:7px 0; background:linear-gradient(90deg, #161b23 25%, #1f2733 37%, #161b23 63%); background-size:400% 100%; animation:skeleton-loading 1.4s ease infinite; }
+  @keyframes skeleton-loading{ 0%{background-position:100% 50%;} 100%{background-position:0% 50%;} }
+  .chart-skel{ position:absolute; inset:0; background:var(--panel); display:flex; flex-direction:column; justify-content:center; gap:10px; padding:0 16px; z-index:3; }
+  .rsi-chart-wrap{ position:relative; height:120px; margin-top:10px; }
+  #rsiWeeklyTooltip{
+    position:absolute; pointer-events:none; background:rgba(17,22,29,0.97);
+    border:1px solid var(--panel-border); border-radius:4px; padding:6px 9px;
+    font-size:10px; line-height:1.6; color:var(--text); white-space:nowrap;
+    opacity:0; transition:opacity 0.08s; z-index:5; top:6px;
+  }
+  #rsiWeeklyTooltip.visible{ opacity:1; }
+  #rsiWeeklyTooltip .tt-date{ color:var(--muted); font-size:9px; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:3px; }
+  #rsiWeeklyTooltip .tt-row{ display:flex; justify-content:space-between; gap:10px; }
+  #rsiWeeklyChart{ cursor:crosshair; touch-action:none; display:block; }
+  @media (prefers-reduced-motion: reduce){ .skeleton{ animation:none; opacity:0.5; } }
   .grid{ display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:14px; }
   .panel{ background:var(--panel); border:1px solid var(--panel-border); border-radius:4px; padding:16px; }
   .panel-title{ display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; }
@@ -95,47 +114,65 @@
 
 <div class="chart-panel">
   <div class="panel-title"><span class="panel-label">Graphique prix — hebdomadaire</span><span class="panel-tag">SMA10w / SMA20w / Bollinger / Fibonacci</span></div>
+  <div class="timeframe-row" id="chartTimeframe">
+    <button class="tf-btn" data-days="30">1M</button>
+    <button class="tf-btn" data-days="90">3M</button>
+    <button class="tf-btn" data-days="180">6M</button>
+    <button class="tf-btn" data-days="365">1A</button>
+    <button class="tf-btn active" data-days="9999">Tout</button>
+  </div>
   <div class="chart-legend" id="chartLegend"></div>
   <div class="chart-wrap">
     <canvas id="priceChart"></canvas>
     <div id="chartTooltip"></div>
+    <div class="chart-skel" id="chartSkeleton">
+      <div class="skeleton" style="width:90%"></div>
+      <div class="skeleton" style="width:70%"></div>
+      <div class="skeleton" style="width:85%"></div>
+      <div class="skeleton" style="width:60%"></div>
+    </div>
   </div>
 </div>
 
 <div class="grid">
   <div class="panel">
     <div class="panel-title"><span class="panel-label">Tendance</span><span class="panel-tag">SMA 50 / 200</span></div>
-    <div id="trendPanel" class="loading">Chargement...</div>
+    <div id="trendPanel"><div class="skeleton" style="width:65%"></div><div class="skeleton" style="width:55%"></div><div class="skeleton" style="width:80%"></div></div>
     <div class="explain"><b>Mesure :</b> la position du prix par rapport à ses moyennes mobiles 50j et 200j. <b>Lecture :</b> prix au-dessus des deux, avec SMA50 au-dessus de SMA200 (golden cross), signale une tendance de fond haussière — zone d'achat sur repli. L'inverse (death cross) signale une tendance baissière.</div>
   </div>
 
   <div class="panel">
     <div class="panel-title"><span class="panel-label">Momentum daily</span><span class="panel-tag">RSI 14</span></div>
-    <div id="momentumPanel" class="loading">Chargement...</div>
+    <div id="momentumPanel"><div class="skeleton" style="width:50%"></div><div class="skeleton" style="width:75%"></div><div class="skeleton" style="width:60%"></div></div>
     <div class="explain"><b>Mesure :</b> la vitesse et l'ampleur des mouvements de prix récents (quotidien). <b>Lecture :</b> sous 30 = survente, le marché a peut-être trop vendu (zone d'achat potentielle). Au-dessus de 70 = surachat (zone de vente potentielle). Entre les deux : pas de signal fort.</div>
   </div>
 
   <div class="panel">
     <div class="panel-title"><span class="panel-label">Momentum weekly</span><span class="panel-tag">RSI 14</span></div>
-    <div id="momentumWeeklyPanel" class="loading">Chargement...</div>
+    <div id="momentumWeeklyPanel"><div class="skeleton" style="width:50%"></div><div class="skeleton" style="width:75%"></div><div class="skeleton" style="width:45%"></div></div>
+    <div class="rsi-chart-wrap">
+      <canvas id="rsiWeeklyChart"></canvas>
+      <div id="rsiWeeklyTooltip"></div>
+      <div class="chart-skel" id="rsiChartSkeleton"><div class="skeleton" style="width:90%"></div><div class="skeleton" style="width:60%"></div></div>
+    </div>
     <div class="explain"><b>Mesure :</b> le même calcul que le RSI daily mais sur des clôtures hebdomadaires, donc beaucoup moins de faux signaux. <b>Lecture :</b> un RSI weekly sous 30 est rare et a historiquement coïncidé avec des bas de cycle. Au-dessus de 70, le marché est en euphorie sur le temps long.</div>
   </div>
 
   <div class="panel">
     <div class="panel-title"><span class="panel-label">Niveaux Fibonacci</span><span class="panel-tag">90j</span></div>
-    <div id="fibPanel" class="loading">Chargement...</div>
+    <div id="fibPanel"><div class="skeleton" style="width:60%"></div><div class="skeleton" style="width:60%"></div><div class="skeleton" style="width:60%"></div><div class="skeleton" style="width:60%"></div></div>
     <div class="explain"><b>Mesure :</b> les niveaux de retracement entre le plus haut et le plus bas des 90 derniers jours. <b>Lecture :</b> les niveaux 38,2% / 50% / 61,8% agissent souvent comme support (zone d'achat) en tendance haussière ou résistance (zone de vente) en tendance baissière. Le niveau le plus proche du prix actuel est marqué d'une flèche.</div>
   </div>
 
   <div class="panel">
     <div class="panel-title"><span class="panel-label">Bandes de Bollinger</span><span class="panel-tag">20j, 2&sigma;</span></div>
-    <div id="bollingerPanel" class="loading">Chargement...</div>
+    <div id="bollingerPanel"><div class="skeleton" style="width:65%"></div><div class="skeleton" style="width:65%"></div><div class="skeleton" style="width:40%"></div></div>
     <div class="explain"><b>Mesure :</b> l'écart du prix par rapport à sa moyenne 20j en unités d'écart-type. <b>Lecture :</b> %B proche de 0 = prix collé à la bande basse (survente relative). %B proche de 1 = prix collé à la bande haute (surachat relatif). Une forte compression des bandes annonce souvent un mouvement violent à venir, sans indiquer la direction.</div>
   </div>
 
   <div class="panel">
     <div class="panel-title"><span class="panel-label">Pi Cycle Top</span><span class="panel-tag">SMA111 / 2&times;SMA350</span></div>
-    <div id="piCyclePanel" class="loading">Chargement...</div>
+    <div id="piCyclePanel"><div class="skeleton" style="width:70%"></div><div class="skeleton" style="width:70%"></div><div class="skeleton" style="width:50%"></div></div>
     <div class="explain"><b>Mesure :</b> le croisement de la SMA 111 jours au-dessus de 2&times;SMA 350 jours. <b>Lecture :</b> historiquement, ce croisement a marqué les sommets de cycle BTC à quelques jours près (2013, 2017, 2021). C'est un indicateur de sommet uniquement — il ne signale jamais les creux. Aucun signal actif = pas d'information sur un éventuel sommet imminent.</div>
   </div>
 
@@ -146,13 +183,13 @@
 
   <div class="panel">
     <div class="panel-title"><span class="panel-label">Z-Score (prix)</span><span class="panel-tag">vs SMA50</span></div>
-    <div id="zscorePanel" class="loading">Chargement...</div>
+    <div id="zscorePanel"><div class="skeleton" style="width:35%"></div><div class="skeleton" style="width:80%"></div></div>
     <div class="explain"><b>Attention :</b> ceci est un Z-score statistique du prix par rapport à sa moyenne 50j — <b>pas</b> le MVRV Z-Score on-chain (qui compare valeur de marché et valeur réalisée, et nécessite des données blockchain payantes type Glassnode). <b>Lecture :</b> au-delà de &plusmn;2, le prix s'écarte fortement de sa moyenne récente, ce qui statistiquement appelle souvent un retour vers la moyenne.</div>
   </div>
 
   <div class="panel">
     <div class="panel-title"><span class="panel-label">Liquidité marché</span><span class="panel-tag">Order book</span></div>
-    <div id="liquidityPanel" class="loading">Chargement...</div>
+    <div id="liquidityPanel"><div class="skeleton" style="width:40%"></div><div class="skeleton" style="width:65%"></div><div class="skeleton" style="width:65%"></div><div class="skeleton" style="width:55%"></div></div>
     <div class="explain"><b>Mesure :</b> la profondeur du carnet d'ordres et l'écart bid/ask sur l'exchange. <b>Lecture :</b> un déséquilibre marqué vers les bids indique une pression acheteuse à court terme ; vers les asks, une pression vendeuse. Un spread large signale un risque d'exécution plus élevé (slippage).</div>
   </div>
 
@@ -225,6 +262,26 @@ function calcRSI(closes, period){
   const rs = avgGain/avgLoss;
   return 100 - (100/(1+rs));
 }
+function calcRSISeries(closes, period){
+  const out = new Array(closes.length).fill(null);
+  if(closes.length < period+1) return out;
+  let gains=0, losses=0;
+  for(let i=1;i<=period;i++){
+    const diff = closes[i]-closes[i-1];
+    if(diff>=0) gains+=diff; else losses-=diff;
+  }
+  let avgGain=gains/period, avgLoss=losses/period;
+  out[period] = avgLoss===0 ? 100 : 100-(100/(1+avgGain/avgLoss));
+  for(let i=period+1;i<closes.length;i++){
+    const diff=closes[i]-closes[i-1];
+    const gain = diff>0?diff:0;
+    const loss = diff<0?-diff:0;
+    avgGain = (avgGain*(period-1)+gain)/period;
+    avgLoss = (avgLoss*(period-1)+loss)/period;
+    out[i] = avgLoss===0 ? 100 : 100-(100/(1+avgGain/avgLoss));
+  }
+  return out;
+}
 function toWeekly(closes){
   const weekly = [];
   for(let i=closes.length-1; i>=0; i-=7){ weekly.unshift(closes[i]); }
@@ -255,6 +312,8 @@ async function fetchJson(url, opts){
 }
 
 let lastTrendScore=0, lastMomentumScore=0, lastMomentumWeeklyScore=0, lastFibScore=0, lastBollScore=0, lastPiCycleScore=0, lastZScore=0, lastLiqScore=0;
+let lastDailyData = null;
+let selectedWindowDays = 9999;
 
 async function loadAll(){
   document.getElementById('lastUpdate').textContent = 'Actualisation...';
@@ -368,7 +427,8 @@ async function loadPriceAndTechnicals(){
       '<div class="row"><span class="lbl">Lecture</span><span class="val ' + zClass + '" style="font-size:11px;">' + zZone + '</span></div>';
     lastZScore = clamp(-zScore*30, -100, 100);
 
-    renderChart(dates, closes, levels.filter(function(l){return l.r===0.382||l.r===0.5||l.r===0.618;}));
+    lastDailyData = {dates: dates, closes: closes, fibLevels: levels.filter(function(l){return l.r===0.382||l.r===0.5||l.r===0.618;})};
+    renderChart(lastDailyData.dates, lastDailyData.closes, lastDailyData.fibLevels);
 
   }catch(e){
     const msg = '<div class="loading">Erreur : ' + e.message + '</div>';
@@ -379,12 +439,18 @@ async function loadPriceAndTechnicals(){
     document.getElementById('bollingerPanel').innerHTML = msg;
     document.getElementById('piCyclePanel').innerHTML = msg;
     document.getElementById('zscorePanel').innerHTML = msg;
+    const chartSkel = document.getElementById('chartSkeleton');
+    if(chartSkel) chartSkel.innerHTML = msg;
+    const rsiSkel = document.getElementById('rsiChartSkeleton');
+    if(rsiSkel) rsiSkel.innerHTML = msg;
   }
   updateGauge();
 }
 
 let lastChartSeries = null;
 let chartGeom = null;
+let lastRSISeries = null;
+let rsiChartGeom = null;
 
 function toWeeklySeries(dates, closes){
   const wd = [], wc = [];
@@ -394,18 +460,34 @@ function toWeeklySeries(dates, closes){
 
 function renderChart(dates, closes, fibLevels){
   const weekly = toWeeklySeries(dates, closes);
-  const wDates = weekly.dates, wCloses = weekly.closes;
-  const sma10 = calcSMASeries(wCloses, 10);
-  const sma20 = calcSMASeries(wCloses, 20);
-  const boll = bollinger(wCloses, 20, 2);
+  const wDatesFull = weekly.dates, wClosesFull = weekly.closes;
+  const sma10Full = calcSMASeries(wClosesFull, 10);
+  const sma20Full = calcSMASeries(wClosesFull, 20);
+  const bollFull = bollinger(wClosesFull, 20, 2);
+  const rsiWeeklyFull = calcRSISeries(wClosesFull, 14);
+
+  let weeksToShow = wDatesFull.length;
+  if(selectedWindowDays < 9999){
+    weeksToShow = Math.min(wDatesFull.length, Math.max(2, Math.ceil(selectedWindowDays/7)));
+  }
+  const sIdx = wDatesFull.length - weeksToShow;
+
+  const wDates = wDatesFull.slice(sIdx);
+  const wClosesSlice = wClosesFull.slice(sIdx);
+  const sma10 = sma10Full.slice(sIdx);
+  const sma20 = sma20Full.slice(sIdx);
+  const bUpper = bollFull.upper.slice(sIdx);
+  const bLower = bollFull.lower.slice(sIdx);
+  const rsiWeeklySlice = rsiWeeklyFull.slice(sIdx);
+
   const labels = wDates.map(function(d){ return new Date(d).toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit'}); });
 
   const series = [
-    {name:'Bollinger sup', color:'rgba(124,134,148,0.5)', width:1, dash:[3,2], data: boll.upper},
-    {name:'Bollinger inf', color:'rgba(124,134,148,0.5)', width:1, dash:[3,2], data: boll.lower},
+    {name:'Bollinger sup', color:'rgba(124,134,148,0.5)', width:1, dash:[3,2], data: bUpper},
+    {name:'Bollinger inf', color:'rgba(124,134,148,0.5)', width:1, dash:[3,2], data: bLower},
     {name:'SMA 20 sem.', color:'#ffb000', width:1.3, dash:[2,2], data: sma20},
     {name:'SMA 10 sem.', color:'#4fd1c5', width:1.3, dash:[4,2], data: sma10},
-    {name:'Prix (cloture hebdo)', color:'#f7931a', width:2, dash:null, data: wCloses}
+    {name:'Prix (cloture hebdo)', color:'#f7931a', width:2, dash:null, data: wClosesSlice}
   ];
   fibLevels.forEach(function(l, idx){
     series.splice(idx, 0, {name:'Fib '+(l.r*100).toFixed(1)+'%', color:'rgba(61,220,151,0.35)', width:1, dash:[1,3], data: new Array(labels.length).fill(l.price)});
@@ -414,7 +496,28 @@ function renderChart(dates, closes, fibLevels){
   lastChartSeries = {labels: labels, series: series};
   drawChart();
   renderLegend(series);
+
+  lastRSISeries = {labels: labels, data: rsiWeeklySlice};
+  drawRSIChart();
+
+  const chartSkel = document.getElementById('chartSkeleton');
+  if(chartSkel) chartSkel.style.display = 'none';
+  const rsiSkel = document.getElementById('rsiChartSkeleton');
+  if(rsiSkel) rsiSkel.style.display = 'none';
 }
+
+function initTimeframeButtons(){
+  const buttons = document.querySelectorAll('#chartTimeframe .tf-btn');
+  buttons.forEach(function(btn){
+    btn.addEventListener('click', function(){
+      selectedWindowDays = parseInt(btn.getAttribute('data-days'), 10);
+      buttons.forEach(function(b){ b.classList.remove('active'); });
+      btn.classList.add('active');
+      if(lastDailyData){ renderChart(lastDailyData.dates, lastDailyData.closes, lastDailyData.fibLevels); }
+    });
+  });
+}
+initTimeframeButtons();
 
 function renderLegend(series){
   const el = document.getElementById('chartLegend');
@@ -573,10 +676,120 @@ function initChartInteractivity(){
   canvas.addEventListener('touchend', function(e){ e.preventDefault(); hideTooltip(); }, {passive:false});
   window.addEventListener('resize', function(){
     clearTimeout(window._chartResizeT);
-    window._chartResizeT = setTimeout(function(){ drawChart(); }, 150);
+    window._chartResizeT = setTimeout(function(){ drawChart(); drawRSIChart(); }, 150);
   });
 }
 initChartInteractivity();
+
+function drawRSIChart(highlightIndex){
+  const canvas = document.getElementById('rsiWeeklyChart');
+  if(!canvas || !lastRSISeries) return;
+  const wrap = canvas.parentElement;
+  const W = Math.max(280, wrap.clientWidth);
+  const H = 120;
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = W*dpr; canvas.height = H*dpr;
+  canvas.style.width = W+'px'; canvas.style.height = H+'px';
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.clearRect(0,0,W,H);
+
+  const labels = lastRSISeries.labels;
+  const data = lastRSISeries.data;
+  const n = labels.length;
+  if(n<2) return;
+
+  const padL=30, padR=8, padT=8, padB=18;
+  const plotW = W-padL-padR, plotH = H-padT-padB;
+  const yMin=0, yMax=100;
+
+  function X(i){ return padL + (i/(n-1))*plotW; }
+  function Y(v){ return padT + (1-(v-yMin)/(yMax-yMin))*plotH; }
+
+  rsiChartGeom = {padL:padL, padR:padR, padT:padT, padB:padB, plotW:plotW, plotH:plotH, n:n, W:W, H:H};
+
+  ctx.fillStyle = 'rgba(255,93,93,0.06)';
+  ctx.fillRect(padL, Y(100), plotW, Y(70)-Y(100));
+  ctx.fillStyle = 'rgba(61,220,151,0.06)';
+  ctx.fillRect(padL, Y(30), plotW, Y(0)-Y(30));
+
+  ctx.font = '9px IBM Plex Mono, monospace'; ctx.lineWidth = 1;
+  [0,30,50,70,100].forEach(function(v){
+    const yy = Y(v);
+    const isRef = (v===30 || v===70);
+    ctx.setLineDash(isRef ? [3,2] : []);
+    ctx.strokeStyle = isRef ? 'rgba(255,176,0,0.35)' : '#1f2733';
+    ctx.beginPath(); ctx.moveTo(padL,yy); ctx.lineTo(W-padR,yy); ctx.stroke();
+    ctx.fillStyle = '#7c8694';
+    ctx.fillText(String(v), 2, yy+3);
+  });
+  ctx.setLineDash([]);
+
+  const step = Math.max(1, Math.floor(n/5));
+  for(let i=0;i<n;i+=step){ ctx.fillStyle='#7c8694'; ctx.fillText(labels[i], X(i)-12, H-5); }
+
+  ctx.beginPath();
+  let started = false;
+  data.forEach(function(v,i){
+    if(v===null || v===undefined || !isFinite(v)){ started=false; return; }
+    const px=X(i), py=Y(v);
+    if(!started){ ctx.moveTo(px,py); started=true; } else { ctx.lineTo(px,py); }
+  });
+  ctx.strokeStyle = '#4fd1c5'; ctx.lineWidth = 1.8; ctx.stroke();
+
+  if(highlightIndex !== undefined && highlightIndex !== null){
+    const idx = clamp(highlightIndex, 0, n-1);
+    const v = data[idx];
+    if(v!==null && v!==undefined && isFinite(v)){
+      const px=X(idx), py=Y(v);
+      ctx.strokeStyle = 'rgba(230,226,216,0.3)'; ctx.setLineDash([3,3]);
+      ctx.beginPath(); ctx.moveTo(px,padT); ctx.lineTo(px,H-padB); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.beginPath(); ctx.arc(px,py,3,0,Math.PI*2); ctx.fillStyle = '#4fd1c5'; ctx.fill();
+      ctx.strokeStyle = '#0a0d12'; ctx.lineWidth = 1; ctx.stroke();
+    }
+  }
+}
+
+function showRSITooltip(idx, xPos){
+  const tt = document.getElementById('rsiWeeklyTooltip');
+  if(!tt || !lastRSISeries) return;
+  const v = lastRSISeries.data[idx];
+  if(v===null || v===undefined || !isFinite(v)){ tt.classList.remove('visible'); return; }
+  tt.innerHTML = '<div class="tt-date">' + lastRSISeries.labels[idx] + '</div><div class="tt-row"><span>RSI</span><span>' + v.toFixed(1) + '</span></div>';
+  tt.classList.add('visible');
+  const wrap = document.getElementById('rsiWeeklyChart').parentElement;
+  const wrapW = wrap ? wrap.clientWidth : 280;
+  let left = xPos + 10;
+  if(left + 110 > wrapW) left = Math.max(2, xPos - 120);
+  tt.style.left = left + 'px';
+}
+function hideRSITooltip(){
+  const tt = document.getElementById('rsiWeeklyTooltip');
+  if(tt) tt.classList.remove('visible');
+  drawRSIChart();
+}
+function handleRSIPointer(clientX, clientY){
+  const canvas = document.getElementById('rsiWeeklyChart');
+  if(!canvas || !rsiChartGeom || !lastRSISeries) return;
+  const rect = canvas.getBoundingClientRect();
+  const xPos = clientX - rect.left;
+  const relX = xPos - rsiChartGeom.padL;
+  let idx = Math.round((relX/rsiChartGeom.plotW) * (rsiChartGeom.n-1));
+  idx = clamp(idx, 0, rsiChartGeom.n-1);
+  drawRSIChart(idx);
+  showRSITooltip(idx, xPos);
+}
+function initRSIChartInteractivity(){
+  const canvas = document.getElementById('rsiWeeklyChart');
+  if(!canvas) return;
+  canvas.addEventListener('mousemove', function(e){ handleRSIPointer(e.clientX, e.clientY); });
+  canvas.addEventListener('mouseleave', hideRSITooltip);
+  canvas.addEventListener('touchstart', function(e){ e.preventDefault(); const t=e.touches[0]; if(t) handleRSIPointer(t.clientX, t.clientY); }, {passive:false});
+  canvas.addEventListener('touchmove', function(e){ e.preventDefault(); const t=e.touches[0]; if(t) handleRSIPointer(t.clientX, t.clientY); }, {passive:false});
+  canvas.addEventListener('touchend', function(e){ e.preventDefault(); hideRSITooltip(); }, {passive:false});
+}
+initRSIChartInteractivity();
 
 async function fetchOrderBook(){
   try{
