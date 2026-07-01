@@ -114,7 +114,7 @@
   </div>
   <div class="gauge-track"><div class="gauge-marker" id="gaugeMarker" style="left:50%;"></div></div>
   <div class="gauge-scale"><span>Distribution forte</span><span>Distribution</span><span>Neutre</span><span>Accumulation</span><span>Accumulation forte</span></div>
-  <div class="explain">Moyenne pondérée de 8 indicateurs techniques (tendance, RSI daily/weekly, Fibonacci, Bollinger, Pi Cycle, Z-score, liquidité). Un score élevé ne garantit rien : c'est une lecture de structure de marché, pas un signal d'achat automatique.</div>
+  <div class="explain">Moyenne pondérée de 9 indicateurs techniques (tendance, RSI daily/weekly, Stochastic RSI, Fibonacci, Bollinger, Pi Cycle, Z-score, liquidité). Un score élevé ne garantit rien : c'est une lecture de structure de marché, pas un signal d'achat automatique.</div>
 </div>
 
 <div class="panel" style="margin-bottom:16px;">
@@ -173,6 +173,17 @@
       <div class="chart-skel" id="rsiChartSkeleton"><div class="skeleton" style="width:90%"></div><div class="skeleton" style="width:60%"></div></div>
     </div>
     <div class="explain"><b>Mesure :</b> le même calcul que le RSI daily mais sur des clôtures hebdomadaires, donc beaucoup moins de faux signaux. <b>Lecture :</b> un RSI weekly sous 30 est rare et a historiquement coïncidé avec des bas de cycle. Au-dessus de 70, le marché est en euphorie sur le temps long.</div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title"><span class="panel-label">Stochastic RSI</span><span class="panel-tag">14, 14, 3, 3</span></div>
+    <div id="stochRSIPanel"><div class="skeleton" style="width:55%"></div><div class="skeleton" style="width:75%"></div><div class="skeleton" style="width:45%"></div></div>
+    <div class="rsi-chart-wrap">
+      <canvas id="stochRSIChart"></canvas>
+      <div id="stochRSITooltip"></div>
+      <div class="chart-skel" id="stochRSIChartSkeleton"><div class="skeleton" style="width:90%"></div><div class="skeleton" style="width:60%"></div></div>
+    </div>
+    <div class="explain"><b>Mesure :</b> applique un stochastique sur le RSI lui-meme (pas sur le prix) — beaucoup plus sensible et reactif que le RSI classique, au prix de plus de faux signaux. <b>Lecture :</b> %K (cyan) au-dessus de %D (ambre) = momentum haussier court terme ; l'inverse = baissier. Sous 20 = survente, au-dessus de 80 = surachat. Un croisement %K/%D dans ces zones extremes est le signal le plus suivi par les traders actifs (proche de ce qu'utilise TradingView par defaut).</div>
   </div>
 
   <div class="panel">
@@ -299,6 +310,39 @@ function calcRSISeries(closes, period){
   }
   return out;
 }
+function smaOfSeries(arr, period){
+  const out = new Array(arr.length).fill(null);
+  for(let i=0;i<arr.length;i++){
+    let windowVals = [];
+    for(let j=i-period+1;j<=i;j++){
+      if(j<0 || arr[j]===null || arr[j]===undefined){ windowVals=null; break; }
+      windowVals.push(arr[j]);
+    }
+    if(!windowVals) continue;
+    out[i] = windowVals.reduce(function(a,b){return a+b;},0)/period;
+  }
+  return out;
+}
+function calcStochRSI(closes, rsiPeriod, stochPeriod, kSmooth, dSmooth){
+  const rsiSeries = calcRSISeries(closes, rsiPeriod);
+  const n = closes.length;
+  const rawK = new Array(n).fill(null);
+  for(let i=0;i<n;i++){
+    if(rsiSeries[i]===null) continue;
+    let windowVals = [];
+    for(let j=i-stochPeriod+1;j<=i;j++){
+      if(j<0 || rsiSeries[j]===null){ windowVals=null; break; }
+      windowVals.push(rsiSeries[j]);
+    }
+    if(!windowVals) continue;
+    const minR = Math.min.apply(null, windowVals);
+    const maxR = Math.max.apply(null, windowVals);
+    rawK[i] = (maxR-minR)===0 ? 0 : ((rsiSeries[i]-minR)/(maxR-minR))*100;
+  }
+  const kSeries = smaOfSeries(rawK, kSmooth);
+  const dSeries = smaOfSeries(kSeries, dSmooth);
+  return {k:kSeries, d:dSeries};
+}
 function toWeekly(closes){
   const weekly = [];
   for(let i=closes.length-1; i>=0; i-=7){ weekly.unshift(closes[i]); }
@@ -328,9 +372,11 @@ async function fetchJson(url, opts){
   }
 }
 
-let lastTrendScore=0, lastMomentumScore=0, lastMomentumWeeklyScore=0, lastFibScore=0, lastBollScore=0, lastPiCycleScore=0, lastZScore=0, lastLiqScore=0;
+let lastTrendScore=0, lastMomentumScore=0, lastMomentumWeeklyScore=0, lastFibScore=0, lastBollScore=0, lastPiCycleScore=0, lastZScore=0, lastLiqScore=0, lastStochScore=0;
 let lastDailyData = null;
 let selectedWindowDays = 9999;
+let lastStochSeries = null;
+let stochChartGeom = null;
 
 async function loadAll(){
   document.getElementById('lastUpdate').textContent = 'Actualisation...';
@@ -385,6 +431,33 @@ async function loadPriceAndTechnicals(){
       '<div class="row"><span class="lbl">Interpretation</span><span class="val ' + rsiWClass + '">' + rsiWZone + '</span></div>' +
       '<div class="row"><span class="lbl">Points utilises</span><span class="val" style="color:var(--muted); font-weight:400;">' + weeklyCloses.length + ' semaines</span></div>';
     lastMomentumWeeklyScore = clamp((50-rsiWeekly)*2.5, -100, 100);
+
+    const stoch = calcStochRSI(closes, 14, 14, 3, 3);
+    let lastK = null, lastD = null;
+    for(let i=stoch.k.length-1; i>=0; i--){
+      if(stoch.k[i]!==null && stoch.d[i]!==null){ lastK = stoch.k[i]; lastD = stoch.d[i]; break; }
+    }
+    if(lastK!==null){
+      let stochZone='Neutre', stochClass='neutral';
+      if(lastK<20 && lastD<20){ stochZone='Survente - momentum court terme baissier extreme'; stochClass='pos'; }
+      else if(lastK>80 && lastD>80){ stochZone='Surachat - momentum court terme haussier extreme'; stochClass='neg'; }
+      const crossUp = lastK>lastD;
+      document.getElementById('stochRSIPanel').innerHTML =
+        '<div class="row"><span class="lbl">%K</span><span class="val" style="color:#4fd1c5;">' + lastK.toFixed(1) + '</span></div>' +
+        '<div class="row"><span class="lbl">%D</span><span class="val" style="color:#ffb000;">' + lastD.toFixed(1) + '</span></div>' +
+        '<div class="row"><span class="lbl">Croisement</span><span class="val">' + (crossUp?'%K au-dessus de %D':'%K en-dessous de %D') + '</span></div>' +
+        '<div class="row"><span class="lbl">Lecture</span><span class="val ' + stochClass + '" style="font-size:11px;">' + stochZone + '</span></div>';
+      lastStochScore = clamp((50-lastK)*2, -100, 100);
+
+      const stochDates = dates.slice(-90);
+      const stochK = stoch.k.slice(-90);
+      const stochD = stoch.d.slice(-90);
+      const stochLabels = stochDates.map(function(d){ return new Date(d).toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit'}); });
+      lastStochSeries = {labels: stochLabels, k: stochK, d: stochD};
+      drawStochChart();
+      const stochSkel = document.getElementById('stochRSIChartSkeleton');
+      if(stochSkel) stochSkel.style.display = 'none';
+    }
 
     const window90 = closes.slice(-90);
     const high = Math.max.apply(null, window90);
@@ -462,6 +535,7 @@ async function loadPriceAndTechnicals(){
     document.getElementById('trendPanel').innerHTML = msg;
     document.getElementById('momentumPanel').innerHTML = msg;
     document.getElementById('momentumWeeklyPanel').innerHTML = msg;
+    document.getElementById('stochRSIPanel').innerHTML = msg;
     document.getElementById('fibPanel').innerHTML = msg;
     document.getElementById('bollingerPanel').innerHTML = msg;
     document.getElementById('piCyclePanel').innerHTML = msg;
@@ -748,7 +822,7 @@ function initChartInteractivity(){
   canvas.addEventListener('touchend', function(e){ e.preventDefault(); hideTooltip(); }, {passive:false});
   window.addEventListener('resize', function(){
     clearTimeout(window._chartResizeT);
-    window._chartResizeT = setTimeout(function(){ drawChart(); drawRSIChart(); }, 150);
+    window._chartResizeT = setTimeout(function(){ drawChart(); drawRSIChart(); drawStochChart(); }, 150);
   });
 }
 initChartInteractivity();
@@ -863,6 +937,124 @@ function initRSIChartInteractivity(){
 }
 initRSIChartInteractivity();
 
+function drawStochChart(highlightIndex){
+  const canvas = document.getElementById('stochRSIChart');
+  if(!canvas || !lastStochSeries) return;
+  const wrap = canvas.parentElement;
+  const W = Math.max(280, wrap.clientWidth);
+  const H = 120;
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = W*dpr; canvas.height = H*dpr;
+  canvas.style.width = W+'px'; canvas.style.height = H+'px';
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.clearRect(0,0,W,H);
+
+  const labels = lastStochSeries.labels;
+  const kData = lastStochSeries.k, dData = lastStochSeries.d;
+  const n = labels.length;
+  if(n<2) return;
+
+  const padL=30, padR=8, padT=8, padB=18;
+  const plotW = W-padL-padR, plotH = H-padT-padB;
+  const yMin=0, yMax=100;
+
+  function X(i){ return padL + (i/(n-1))*plotW; }
+  function Y(v){ return padT + (1-(v-yMin)/(yMax-yMin))*plotH; }
+
+  stochChartGeom = {padL:padL, padR:padR, padT:padT, padB:padB, plotW:plotW, plotH:plotH, n:n, W:W, H:H};
+
+  ctx.fillStyle = 'rgba(255,93,93,0.06)';
+  ctx.fillRect(padL, Y(100), plotW, Y(80)-Y(100));
+  ctx.fillStyle = 'rgba(61,220,151,0.06)';
+  ctx.fillRect(padL, Y(20), plotW, Y(0)-Y(20));
+
+  ctx.font = '9px IBM Plex Mono, monospace'; ctx.lineWidth = 1;
+  [0,20,50,80,100].forEach(function(v){
+    const yy = Y(v);
+    const isRef = (v===20 || v===80);
+    ctx.setLineDash(isRef ? [3,2] : []);
+    ctx.strokeStyle = isRef ? 'rgba(255,176,0,0.35)' : '#1f2733';
+    ctx.beginPath(); ctx.moveTo(padL,yy); ctx.lineTo(W-padR,yy); ctx.stroke();
+    ctx.fillStyle = '#7c8694';
+    ctx.fillText(String(v), 2, yy+3);
+  });
+  ctx.setLineDash([]);
+
+  const step = Math.max(1, Math.floor(n/5));
+  for(let i=0;i<n;i+=step){ ctx.fillStyle='#7c8694'; ctx.fillText(labels[i], X(i)-12, H-5); }
+
+  function drawLine(data, color){
+    ctx.beginPath();
+    let started = false;
+    data.forEach(function(v,i){
+      if(v===null || v===undefined || !isFinite(v)){ started=false; return; }
+      const px=X(i), py=Y(v);
+      if(!started){ ctx.moveTo(px,py); started=true; } else { ctx.lineTo(px,py); }
+    });
+    ctx.strokeStyle = color; ctx.lineWidth = 1.6; ctx.stroke();
+  }
+  drawLine(dData, '#ffb000');
+  drawLine(kData, '#4fd1c5');
+
+  if(highlightIndex !== undefined && highlightIndex !== null){
+    const idx = clamp(highlightIndex, 0, n-1);
+    const px = X(idx);
+    ctx.strokeStyle = 'rgba(230,226,216,0.3)'; ctx.setLineDash([3,3]);
+    ctx.beginPath(); ctx.moveTo(px,padT); ctx.lineTo(px,H-padB); ctx.stroke();
+    ctx.setLineDash([]);
+    [{data:kData, color:'#4fd1c5'}, {data:dData, color:'#ffb000'}].forEach(function(s){
+      const v = s.data[idx];
+      if(v===null || v===undefined || !isFinite(v)) return;
+      const py = Y(v);
+      ctx.beginPath(); ctx.arc(px,py,3,0,Math.PI*2); ctx.fillStyle = s.color; ctx.fill();
+      ctx.strokeStyle = '#0a0d12'; ctx.lineWidth = 1; ctx.stroke();
+    });
+  }
+}
+
+function showStochTooltip(idx, xPos){
+  const tt = document.getElementById('stochRSITooltip');
+  if(!tt || !lastStochSeries) return;
+  const k = lastStochSeries.k[idx], d = lastStochSeries.d[idx];
+  if(k===null || k===undefined || !isFinite(k)){ tt.classList.remove('visible'); return; }
+  tt.innerHTML = '<div class="tt-date">' + lastStochSeries.labels[idx] + '</div>' +
+    '<div class="tt-row"><span style="color:#4fd1c5;">%K</span><span>' + k.toFixed(1) + '</span></div>' +
+    '<div class="tt-row"><span style="color:#ffb000;">%D</span><span>' + (d!==null && d!==undefined ? d.toFixed(1) : '--') + '</span></div>';
+  tt.classList.add('visible');
+  const wrap = document.getElementById('stochRSIChart').parentElement;
+  const wrapW = wrap ? wrap.clientWidth : 280;
+  let left = xPos + 10;
+  if(left + 110 > wrapW) left = Math.max(2, xPos - 120);
+  tt.style.left = left + 'px';
+}
+function hideStochTooltip(){
+  const tt = document.getElementById('stochRSITooltip');
+  if(tt) tt.classList.remove('visible');
+  drawStochChart();
+}
+function handleStochPointer(clientX, clientY){
+  const canvas = document.getElementById('stochRSIChart');
+  if(!canvas || !stochChartGeom || !lastStochSeries) return;
+  const rect = canvas.getBoundingClientRect();
+  const xPos = clientX - rect.left;
+  const relX = xPos - stochChartGeom.padL;
+  let idx = Math.round((relX/stochChartGeom.plotW) * (stochChartGeom.n-1));
+  idx = clamp(idx, 0, stochChartGeom.n-1);
+  drawStochChart(idx);
+  showStochTooltip(idx, xPos);
+}
+function initStochChartInteractivity(){
+  const canvas = document.getElementById('stochRSIChart');
+  if(!canvas) return;
+  canvas.addEventListener('mousemove', function(e){ handleStochPointer(e.clientX, e.clientY); });
+  canvas.addEventListener('mouseleave', hideStochTooltip);
+  canvas.addEventListener('touchstart', function(e){ e.preventDefault(); const t=e.touches[0]; if(t) handleStochPointer(t.clientX, t.clientY); }, {passive:false});
+  canvas.addEventListener('touchmove', function(e){ e.preventDefault(); const t=e.touches[0]; if(t) handleStochPointer(t.clientX, t.clientY); }, {passive:false});
+  canvas.addEventListener('touchend', function(e){ e.preventDefault(); hideStochTooltip(); }, {passive:false});
+}
+initStochChartInteractivity();
+
 async function fetchOrderBook(){
   try{
     const book = await fetchJson('https://api.binance.com/api/v3/depth?symbol=BTCUSDT&limit=500');
@@ -913,14 +1105,15 @@ async function loadLiquidity(){
 
 function updateGauge(){
   const composite =
-    lastTrendScore*0.20 +
-    lastMomentumScore*0.15 +
-    lastMomentumWeeklyScore*0.15 +
-    lastFibScore*0.15 +
-    lastBollScore*0.10 +
-    lastPiCycleScore*0.10 +
+    lastTrendScore*0.18 +
+    lastMomentumScore*0.12 +
+    lastMomentumWeeklyScore*0.13 +
+    lastFibScore*0.13 +
+    lastBollScore*0.09 +
+    lastPiCycleScore*0.09 +
     lastZScore*0.05 +
-    lastLiqScore*0.10;
+    lastLiqScore*0.09 +
+    lastStochScore*0.12;
 
   const pct = ((composite+100)/200)*100;
   document.getElementById('gaugeMarker').style.left = clamp(pct,2,98) + '%';
